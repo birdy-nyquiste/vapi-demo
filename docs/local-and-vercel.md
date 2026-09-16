@@ -47,19 +47,19 @@ npm run assistant:export -- echo_demo
 
 命令只生成 `.local/echo_demo.assistant.json`，不创建云端资源或发起通话。在 Vapi 中用生成的配置创建/更新 Assistant，核验所选模型和声音支持，再把 ID 写入映射。导出文件包含 credential ID，不含密钥。语音供应商和模型必须自行配置，避免把过时示例模型当成已测试方案。
 
-来电使用助手的默认开场白，外呼会覆盖为该场景外呼开场白，并通过 `assistantOverrides.variableValues.demoContext` 传入固定演示上下文。外呼关联使用 `name = demo:<运行 ID>`。调用方的电话号码/运行信息不由模型工具参数提供。
+来电使用助手的默认开场白，外呼会覆盖为该场景外呼开场白，并通过 `assistantOverrides.variableValues.demoContext` 传入固定演示上下文。外呼关联使用 ``name = demo:运行ID``。调用方的电话号码/运行信息不由模型工具参数提供。
 
 ## 结果不确定时
 
-创建外呼前先保存运行。Vapi SDK 自动重试被关闭；网络失败后记录 `outcome-unknown`，不会自动再次拨号。若浏览器请求失败，原 request ID 保留在当前标签页，重试将复用该 ID。
+创建外呼前先保存运行。Vapi SDK 自动重试被关闭；明确的参数或鉴权拒绝记录为 failed，便于修正配置后重新发起；网络失败后记录 `outcome-unknown`，不会自动再次拨号。若浏览器请求失败，原 request ID 保留在当前标签页，重试将复用该 ID。
 
-在 Vapi Dashboard 查找 name 为 demo:<运行 ID>，使用 Call ID 在详情面板核对关联；后端会向 Vapi 查询并验证归属。不能通过随便填写 Call ID 解除阻塞。若没有创建通话的确定证据，不要删记录后再次拨号。
+在 Vapi Dashboard 查找 `name = demo:运行ID`，使用 Call ID 在详情面板核对关联；后端会向 Vapi 查询并验证归属。不能通过随便填写 Call ID 解除阻塞。若没有创建通话的确定证据，不要删记录后再次拨号。
 
 数据库中未结束或结果不确定的真实外呼会阻止新的外呼。若已确认没有创建通话但 Dashboard 没有可关联记录，需要管理员调查并手工修复运行状态；首版不提供一键跳过。
 
 ## 替换场景
 
-复制 `src/scenarios/echo.ts`，提供提示词、两个开场白、固定上下文、工具参数 schema 和同步处理函数，然后在 `src/server/runtime/scenarios.ts` 注册。重新导出助手配置并更新 Vapi 映射；不修改电话接入或页面。
+复制 `src/scenarios/echo.ts`，提供提示词、两个开场白、固定上下文、工具参数 schema 和处理函数（支持 async），然后在 `src/server/runtime/scenarios.ts` 注册。重新导出助手配置并更新 Vapi 映射；不修改电话接入或页面。
 
 当前工具的持久副作用仅为框架在事务内保存 JSON 结果。不要在处理函数中直接调用支付、邮件等外部写入；外部副作用需要单独实现幂等和失败恢复。历史运行保存场景版本；活动通话期间不要替换该场景版本。
 
@@ -72,3 +72,5 @@ npm run build
 ```
 
 自动测试使用嵌入式 PostgreSQL 执行 SQL，以及本地 HTTP 请求；不调用 Vapi 或 Telnyx。模拟通过不代表真实电话通过。最后必须验证美国手机真实拨入、真实外呼、工具调用，以及部署域名的 webhook。
+
+2026-09-16 本地验证：17 项自动测试通过，类型检查和生产构建通过；浏览器验证来电模拟、外呼配置跟进、无效参数失败展示、刷新及服务重启后的记录保留。桌面与 390px 手机布局已检查。真实 Vapi/Telnyx 通话、托管 Postgres 和 Vercel 部署尚未验证。
