@@ -14,14 +14,63 @@ npm run dev
 
 ## Vercel
 
-1. 准备托管 Postgres，使用供应商提供的 TLS/连接池连接串设置 `DATABASE_URL`。
-2. 在本地使用目标数据库连接串执行 `npm run db:migrate`。部署函数不会在每次启动时执行 DDL。
-3. 导入仓库为一个 Vercel 项目。仓库的 `vercel.json` 构建 Vite 前端，并将 `/api/*` 路由交给 `api/index.ts` 的 Express 应用。
-4. 配置环境变量。可先部署 `DEMO_MODE=mock` 验证页面，但必须同时配置 `DATABASE_URL` 和 `DEMO_ACCESS_TOKEN`。真实接入时切换为 `live`。
-5. 所有凭据均为服务端环境变量，不能添加 `VITE_` 前缀。
-6. Vapi webhook 必须可从外网访问。Vercel Deployment Protection 不应拦截该路径；应用自己对 webhook 验证独立 Bearer 凭据。
+以下从已推送的 [GitHub 仓库](https://github.com/birdy-nyquiste/vapi-demo)创建一个 Vercel 项目。先用托管数据库运行模拟模式，确认部署链路，再配置真实电话。当前项目已在 Vercel 和 Neon 上验证来电、报价与购买意向记录；外呼配置跟进仍需单独验收。
 
-此配置提供可构建部署结构；最终云部署、数据库供应商与真实电话仍需实际接入验证。
+### 1. 准备数据库并迁移
+
+1. 创建一个可从 Vercel Functions 和执行迁移的电脑访问的托管 PostgreSQL 数据库。取得供应商提供的连接串；如供应商提供 TLS、连接池专用地址，按其要求使用。不要把连接串提交到 Git。
+2. 在仓库根目录运行 `npm ci`，复制 `.env.example` 为被 Git 忽略的 `.env`，在 `.env` 中填写**同一个数据库**的 `DATABASE_URL`。
+3. 运行 `npm run db:migrate`，确认输出 `Schema ready`。迁移会创建 `runs`、`events` 和 `tool_executions` 等表；后续版本更新也应先执行迁移，再部署依赖新表结构的代码。Vercel Function 启动时不会运行 DDL。
+
+### 2. 从 GitHub 导入项目
+
+1. 在 Vercel Dashboard 选择 **Add New → Project**，连接有权访问该仓库的 GitHub 账号，导入 `birdy-nyquiste/vapi-demo`。
+2. 项目根目录选择仓库根目录 `./`；框架选择 **Vite**。确认构建命令为 `npm run build`，输出目录为 `dist`。仓库的 `vercel.json` 已设置这些值，并将 `/api/*` 转给 `api/index.ts` 的 Express Function；无需另建前后端项目。
+3. 将 Production Branch 设为 `main`。检查项目 **Settings → Build and Deployment** 中的 Node.js Version 和构建日志；`package.json` 要求至少 Node 22.12，本地已在 22.x 验证。Vercel 也会参考 `package.json` 的 `engines.node` 选择主版本；当前的开放范围可能选到更新的版本。若部署必须固定为 22.x，需要将该范围收窄为 `22.x` 并重新部署。
+4. 在首次点击 **Deploy** 前添加下一节的 Production 环境变量。如果也要部署其他分支，在 Preview 环境分别配置数据库、口令和模式；Preview 变量不会自动沿用 Production 的值。
+
+如果先在 Vercel 创建了空项目和 Neon 数据库，之后才在 **Settings → Git** 连接这个已有仓库，连接前已推送的 `main` 提交可能没有触发部署。检查 **Deployments**；若没有任何部署，在该页的操作菜单选择 **Create Deployment**，输入 `main` 对应的 Git 引用并创建 Production 部署。也可以在配置完成后向 `main` 推送一个新提交来触发构建。不要把“Git 已连接”当成“已部署”。参见 Vercel 的 [从 Git 引用创建部署](https://vercel.com/docs/git#creating-a-deployment-from-a-git-reference)。
+
+Vercel 的 [Git 导入流程](https://vercel.com/docs/git)、[Node.js 版本设置](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions)和[环境变量作用范围](https://vercel.com/docs/environment-variables)以官方文档为准。
+
+### 3. 配置首次部署的环境变量
+
+在 Vercel 项目 **Settings → Environment Variables** 中添加以下值，至少勾选 **Production**：
+
+| 变量 | 首次部署的值 | 用途 |
+| --- | --- | --- |
+| `DEMO_MODE` | `mock` | 仅模拟，不拨打真实电话 |
+| `DATABASE_URL` | 第 1 步已迁移的托管 Postgres 连接串 | Vercel 上不能使用本地 PGlite 数据目录 |
+| `DEMO_ACCESS_TOKEN` | 自行生成的长随机口令 | 页面登录及管理 API 访问；部署环境不可留空 |
+
+使用 Vercel 的服务端环境变量，**不要**加 `VITE_` 前缀，也不要把私钥写入前端或仓库。部署时 `DATABASE_URL` 必须存在，即使 `DEMO_MODE=mock` 也是如此。每次修改环境变量后都要创建新部署或在 Deployments 中重新部署；旧部署不会自动得到新值。
+
+### 4. 部署并检查模拟模式
+
+1. 点击 **Deploy**，等待构建和 Function 部署完成。从项目的 Production Domains 中复制稳定的 HTTPS 域名，记为 `BASE_URL`。不要用一次性的部署 URL 配置长期 webhook。
+2. 访问 `BASE_URL/api/health`，预期 JSON 为 `{"ok":true}`。若返回 503，先核对 `DATABASE_URL`、迁移结果和 Function 日志。
+3. 打开 `BASE_URL`，用 `DEMO_ACCESS_TOKEN` 登录。确认场景列表显示 `mock` 和托管 Postgres；分别运行来电及外呼模拟，刷新页面后仍能看到运行和事件。模拟按钮不会拨号。
+4. 在 Vercel 的 **Deployments** 查看构建结果，在该部署的 **Logs** 查看 Function 错误。若页面正常但 `/api/health` 失败，优先检查 Function 路由、数据库连接与迁移，而不是只看前端构建状态。
+
+推送到 `main` 会触发后续 Production 部署；非生产分支通常生成 Preview 部署。每个环境都需要对应的数据库与变量。参见 Vercel 的 [Git 部署说明](https://vercel.com/docs/git)。
+
+### 5. 切换到真实电话
+
+模拟部署通过后，在 Vapi 准备号码、Assistant 和 webhook 凭据；需要外呼时再按下方 **Vapi + Telnyx** 一节配置 Telnyx。将以下变量添加到 Vercel 的 **Production** 环境，并把 `DEMO_MODE` 改为 `live`：
+
+| 变量 | 要填的内容 |
+| --- | --- |
+| `VAPI_API_KEY` | 服务端 Vapi API 私钥 |
+| `VAPI_WEBHOOK_SECRET` | Vapi Custom Credential 使用的 Bearer Token 内容，与后端校验值完全一致 |
+| `VAPI_PHONE_NUMBER_ID` | Vapi 中的号码 ID；Vapi 免费号码可用于来电测试，外呼需要支持外呼的号码 |
+| `TEST_PHONE_NUMBER` | 唯一允许外呼的美国测试手机，格式为 `+1` 加 10 位数字 |
+| `INBOUND_PHONE_NUMBER` | 页面展示的来电号码，建议使用 E.164 格式 |
+| `VAPI_ASSISTANT_MAP` | 例如 `{"echo_demo":"实际的assistant-id"}`；每个场景使用不同的 Assistant ID |
+| `INBOUND_SCENARIO_ID` | 当前来电号码在 Vapi 中实际绑定的场景，例如 `echo_demo` |
+
+`PUBLIC_BASE_URL`、`VAPI_CREDENTIAL_ID` 和语音模型相关变量用于**本地导出 Assistant 配置**；当前 Vercel Function 不读取它们。导出时 `PUBLIC_BASE_URL` 应为上一步确认可访问的稳定 HTTPS 域名，生成的 Assistant webhook URL 应为 `https://你的域名/api/vapi/webhook`。创建或更新 Assistant、绑定来电号码后，将实际 Assistant ID 写入 `VAPI_ASSISTANT_MAP`。
+
+为新变量重新部署 Production。登录页面检查配置缺失提示；再从美国测试手机拨入，核对接通、字幕、工具结果和刷新后的记录。若已配置支持外呼的号码，再从页面向允许的测试手机发起一次外呼。外呼创建请求成功只表示 Vapi 接受了请求，不表示电话已接通。真实电话验证前，确保 Vapi 能从公网访问 webhook：Vercel Deployment Protection 若保护了该域名，会先拦截请求；应用自己的 webhook Bearer 验证仍必须保留。参见 Vercel 的 [Deployment Protection 说明](https://vercel.com/docs/deployment-protection)。
 
 ## Vapi + Telnyx
 
