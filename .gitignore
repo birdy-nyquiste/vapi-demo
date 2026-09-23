@@ -7,3 +7,4 @@ dist/
 .vercel/
 coverage/
 *.log
+.DS_Store
