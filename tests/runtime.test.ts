@@ -337,9 +337,7 @@ describe("replacement scenario contract", () => {
     const prompt = config.model.messages[0].content;
     expect(prompt).toContain("inbound reference");
     expect(prompt).toContain("{{demoContext}}");
-    expect(config.serverMessages).toContain(
-      'transcript[transcriptType="final"]',
-    );
+    expect(config.serverMessages).toContain("transcript");
     expect(JSON.stringify(config)).not.toContain("hidden-secret");
   });
   it("persists provider timestamps without confusing receipt time with call time", async () => {
