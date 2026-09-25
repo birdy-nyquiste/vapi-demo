@@ -202,7 +202,12 @@ export function App() {
           r.direction === "outbound" &&
           !terminal(r.status),
       ));
-  const shown = events.filter(
+  const visibleEvents = events.filter(
+    (e) =>
+      !e.kind.startsWith("transcript") ||
+      e.payload.transcriptType !== "partial",
+  );
+  const shown = visibleEvents.filter(
     (e) => view === "timeline" || e.kind.startsWith("transcript"),
   );
   return (
@@ -510,7 +515,7 @@ export function App() {
                           aria-pressed={view === "timeline"}
                           onClick={() => setView("timeline")}
                         >
-                          执行时间线 <span>{events.length}</span>
+                          执行时间线 <span>{visibleEvents.length}</span>
                         </button>
                         <button
                           aria-pressed={view === "transcript"}
@@ -608,7 +613,6 @@ function EventRow({ event: e }: { event: RunEvent }) {
         {transcript ? (
           <p className="transcript">
             {String(p.transcript || "")}
-            <small>{p.transcriptType === "partial" ? "（识别中）" : ""}</small>
           </p>
         ) : tool ? (
           <>

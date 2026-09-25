@@ -39,6 +39,29 @@ beforeAll(async () => {
 }, 30000);
 afterAll(() => db.close());
 describe("webhook runtime", () => {
+  it("stores only final transcripts", async () => {
+    const id = randomUUID();
+    for (const [transcriptType, transcript] of [
+      ["partial", "您好"],
+      ["partial", "您好，请问"],
+      ["final", "您好，请问需要什么帮助？"],
+    ]) {
+      await handleWebhook(
+        db,
+        c,
+        incoming(id, {
+          type: "transcript",
+          role: "assistant",
+          transcriptType,
+          transcript,
+        }),
+      );
+    }
+    const events = await eventsAfter(db, (await byCallId(db, id)).id, 0);
+    expect(events.map((e) => e.payload.transcript)).toEqual([
+      "您好，请问需要什么帮助？",
+    ]);
+  });
   it("persists a tool once across concurrent duplicate deliveries", async () => {
     const id = randomUUID();
     const body = incoming(id, {
@@ -117,6 +140,7 @@ describe("webhook runtime", () => {
     const run = await simulate(db, c, "nyquiste_bundle", "inbound", false);
     const tools = await toolsForRun(db, run!.id);
     expect((tools[0].result as { amount: number }).amount).toBe(2098);
+    expect((tools[0].result as { currencyCode: string }).currencyCode).toBe("USD");
     expect(run?.mode).toBe("mock");
     expect((await getRun(db, run!.id)).status).toBe("ended");
   });
@@ -313,6 +337,9 @@ describe("replacement scenario contract", () => {
     const prompt = config.model.messages[0].content;
     expect(prompt).toContain("inbound reference");
     expect(prompt).toContain("{{demoContext}}");
+    expect(config.serverMessages).toContain(
+      'transcript[transcriptType="final"]',
+    );
     expect(JSON.stringify(config)).not.toContain("hidden-secret");
   });
   it("persists provider timestamps without confusing receipt time with call time", async () => {

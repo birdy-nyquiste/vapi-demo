@@ -149,6 +149,9 @@ export async function handleWebhook(
       }
       return { results };
     }
+    // Partial transcripts grow word by word; only complete utterances belong in the timeline.
+    if (m.type.startsWith("transcript") && m.transcriptType === "partial")
+      return { ok: true };
     // Repeated informational events are harmless; retain delivery history for inspection.
     await addEvent(tx, r.id, m.type, payload);
     const allowed = ["queued", "ringing", "in-progress", "forwarding", "ended"];

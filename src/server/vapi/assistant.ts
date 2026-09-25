@@ -11,7 +11,7 @@ export function assistantConfig(
     server,
     serverMessages: [
       "status-update",
-      "transcript",
+      'transcript[transcriptType="final"]',
       "tool-calls",
       "end-of-call-report",
     ],
